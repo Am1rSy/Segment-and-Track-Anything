@@ -54,14 +54,37 @@ class Detector:
         transfered_boxes = np.array(transfered_boxes)
         return transfered_boxes
         
+    @torch.no_grad()
+    def run_grounding(self, origin_frame, grounding_caption, box_threshold, text_threshold):
+        '''
+            return:
+                annotated_frame:nd.array
+                transfered_boxes: nd.array [N, 4]: [[x0, y0], [x1, y1]]
+        '''
+        height, width, _ = origin_frame.shape
+        img_pil = PIL.Image.fromarray(origin_frame)
+        re_width, re_height = img_pil.size
+        _, image_tensor = self.image_transform_grounding(img_pil)
+        # img_pil = self.image_transform_grounding_for_vis(img_pil)
+
+        # run grounidng
+        boxes, logits, phrases = predict(self.gd, image_tensor, grounding_caption, box_threshold, text_threshold, device=self.deivce)
+        annotated_frame = annotate(image_source=np.asarray(img_pil), boxes=boxes, logits=logits, phrases=phrases)[:, :, ::-1]
+        annotated_frame = cv2.resize(annotated_frame, (width, height), interpolation=cv2.INTER_LINEAR)
+        
+        # transfer boxes to sam-format 
+        transfered_boxes = self.transfer_boxes_format(boxes, re_height, re_width)
+        return annotated_frame, transfered_boxes
+
 if __name__ == "__main__":
     detector = Detector("cuda")
     origin_frame = cv2.imread('./debug/point.png')
     origin_frame = cv2.cvtColor(origin_frame, cv2.COLOR_BGR2RGB)
-
+    grounding_caption = "swan.water"
     box_threshold = 0.25
     text_threshold = 0.25
 
+    annotated_frame, boxes = detector.run_grounding(origin_frame, grounding_caption, box_threshold, text_threshold)
     cv2.imwrite('./debug/x.png', annotated_frame)
 
     for i in range(len(boxes)):
