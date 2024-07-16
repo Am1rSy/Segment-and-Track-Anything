@@ -185,40 +185,7 @@ def roll_back_undo_click_stack_and_refine_seg(Seg_Tracker, origin_frame, click_s
         return Seg_Tracker, masked_frame, click_stack
     else:
         return Seg_Tracker, origin_frame, [[], []]
-    
 
-def mid_frame_undo_click_stack_and_refine_seg(Seg_Tracker, origin_frame, click_stack, aot_model, long_term_mem, max_len_long_term, sam_gap, max_obj_num, points_per_side,input_video, input_img_seq, frame_num, refine_idx):
-    
-    if Seg_Tracker is None:
-        return Seg_Tracker, origin_frame, [[], []]
-
-    print("Undo!")
-    if len(click_stack[0]) > 0:
-        click_stack[0] = click_stack[0][: -1]
-        click_stack[1] = click_stack[1][: -1]
-    
-    if len(click_stack[0]) > 0:
-        prompt = {
-            "points_coord":click_stack[0],
-            "points_mode":click_stack[1],
-            "multimask":"True",
-        }
-
-        chosen_frame_show, curr_mask, ori_frame = res_by_num(input_video, input_img_seq, frame_num)
-        Seg_Tracker.curr_idx = refine_idx
-        predicted_mask, masked_frame = Seg_Tracker.seg_acc_click( 
-                                                        origin_frame=origin_frame, 
-                                                        coords=np.array(prompt["points_coord"]),
-                                                        modes=np.array(prompt["points_mode"]),
-                                                        multimask=prompt["multimask"],
-                                                        )
-        curr_mask[curr_mask == refine_idx]  = 0
-        curr_mask[predicted_mask != 0]  = refine_idx
-        predicted_mask=curr_mask
-        Seg_Tracker = SegTracker_add_first_frame(Seg_Tracker, origin_frame, predicted_mask)
-        return Seg_Tracker, masked_frame, click_stack
-    else:
-        return Seg_Tracker, origin_frame, [[], []]
 
 def seg_acc_click(Seg_Tracker, prompt, origin_frame):
     # seg acc to click
@@ -301,44 +268,6 @@ def roll_back_sam_click(Seg_Tracker, origin_frame, point_mode, click_stack, aot_
 
     return Seg_Tracker, masked_frame, click_stack
 
-def mid_sam_click(Seg_Tracker, origin_frame, point_mode, click_stack, aot_model, long_term_mem, max_len_long_term, sam_gap, max_obj_num, points_per_side, input_video, input_img_seq, frame_num, evt:gr.SelectData):
-    """
-    Args:
-        origin_frame: nd.array
-        click_stack: [[coordinate], [point_mode]]
-    """
-
-    print("Click")
-
-    if point_mode == "Positive":
-        point = {"coord": [evt.index[0], evt.index[1]], "mode": 1}
-    else:
-        # TODO：add everything positive points
-        point = {"coord": [evt.index[0], evt.index[1]], "mode": 0}
-
-    if Seg_Tracker is None:
-        Seg_Tracker, _, _, _ = init_SegTracker(aot_model, long_term_mem, max_len_long_term, sam_gap, max_obj_num, points_per_side, origin_frame)
-
-
-    chosen_frame_show, curr_mask, ori_frame = res_by_num(input_video, input_img_seq, frame_num)
-    print(np.unique(curr_mask))
-    print(Seg_Tracker.curr_idx)
-    Seg_Tracker.update_origin_merged_mask(curr_mask)    
-    Seg_Tracker.curr_idx += 1
-
-    print(f'Adding Object ID:{Seg_Tracker.curr_idx}')
-
-    # get click prompts for sam to predict mask
-    click_prompt = get_click_prompt(click_stack, point)
-
-    # Refine acc to prompt
-    masked_frame = seg_acc_click(Seg_Tracker, click_prompt, ori_frame)
-
-    
-
-    return Seg_Tracker, masked_frame, click_stack
-
-
 def sam_stroke(Seg_Tracker, origin_frame, drawing_board, aot_model, long_term_mem, max_len_long_term, sam_gap, max_obj_num, points_per_side):
 
     if Seg_Tracker is None:
@@ -374,6 +303,7 @@ def segment_everything(Seg_Tracker, aot_model, long_term_mem, max_len_long_term,
     return Seg_Tracker, masked_frame
 
 def add_new_object(Seg_Tracker):
+    # need to update this code so that it can add new object from any frame
     prev_mask = Seg_Tracker.first_frame_mask
     Seg_Tracker.update_origin_merged_mask(prev_mask)    
     Seg_Tracker.curr_idx += 1
@@ -473,14 +403,10 @@ def choose_obj_to_refine(input_video, input_img_seq, Seg_Tracker, frame_num, evt
         curr_idx_mask = np.where(curr_mask == idx, 1, 0).astype(np.uint8)
         chosen_frame_show = draw_points(points=np.array([[evt.index[0],evt.index[1]]]), modes=np.array([[1]]), frame=chosen_frame_show)
         chosen_frame_show = draw_outline(mask=curr_idx_mask, frame=chosen_frame_show)
-        print(f'Object ID: {idx}')
+        print(idx)
     
     return chosen_frame_show, idx
 
-def show_chosen_idx_to_add(input_video, input_img_seq, Seg_Tracker, frame_num):
-    chosen_frame_show, curr_mask, ori_frame = res_by_num(input_video, input_img_seq, frame_num)
-    return chosen_frame_show
-    
 def show_chosen_idx_to_refine(aot_model, long_term_mem, max_len_long_term, sam_gap, max_obj_num, points_per_side, input_video, input_img_seq, Seg_Tracker, frame_num, idx):
     chosen_frame_show, curr_mask, ori_frame = res_by_num(input_video, input_img_seq, frame_num)
     if Seg_Tracker is None:
@@ -540,10 +466,6 @@ def seg_track_app():
         sam_gap = gr.State(None)
         points_per_side = gr.State(None)
         max_obj_num = gr.State(None)
-        input_video = gr.State(None)
-        input_img_seq = gr.State(None)
-        frame_num = gr.State(None)
-        
 
         with gr.Row():
             # video input
@@ -551,7 +473,7 @@ def seg_track_app():
 
                 tab_video_input = gr.Tab(label="Video type input")
                 with tab_video_input:
-                    input_video = gr.Video(label='Input video', height=550, sources=['upload'])
+                    input_video = gr.Video(label='Input video', height=550)
                 
                 tab_img_seq_input = gr.Tab(label="Image-Seq type input")
                 with tab_img_seq_input:
@@ -605,7 +527,7 @@ def seg_track_app():
 
                 tab_stroke = gr.Tab(label="Stroke")
                 with tab_stroke:
-                    drawing_board = gr.ImageEditor(label='Drawing Board', brush=gr.Brush(default_size=10), interactive=True, sources=['upload','clipboard'])
+                    drawing_board = gr.ImageEditor(label='Drawing Board', brush=gr.Brush(default_size=10), interactive=True)
                     with gr.Row():
                         seg_acc_stroke = gr.Button(value="Segment", interactive=True)
                         # stroke_reset_but = gr.Button(
@@ -677,45 +599,6 @@ def seg_track_app():
                 # output_video = gr.Video(label='Output video').style(height=550)
                 output_video = gr.File(label="Predicted video")
                 output_mask = gr.File(label="Predicted masks")
-                with gr.Row():
-                    with gr.Column(scale=1):
-                        with gr.Accordion("Add new object", open=False):
-                        # tab_show_res = gr.Tab(label="Segment result of all frames")
-                        # with tab_show_res:
-                            mid_frame_res = gr.Image(label='Segmented results by frames', height=550)
-                            frame_per = gr.Slider(
-                                label = "Percentage of Frames Viewed",
-                                minimum= 0.0,
-                                maximum= 100.0,
-                                step=0.01,
-                                value=0.0,
-                            )
-                            frame_per.release(show_res_by_slider, inputs=[input_video, input_img_seq, frame_per], outputs=[mid_frame_res, frame_num])
-                            mid_new_obj_button = gr.Button(value="Choose this frame to add new object")
-                            mid_frame = gr.Image(label='Add new masks', height=550)
-
-                            tab_mid_frame_click = gr.Tab(label="Click")
-                            with tab_mid_frame_click:
-                                with gr.Row():
-                                    mid_new_object_button = gr.Button(
-                                    value="Add new object", 
-                                    interactive=True
-                                    )   
-                                    point_mode = gr.Radio(
-                                                choices=["Positive",  "Negative"],
-                                                value="Positive",
-                                                label="Point Prompt",
-                                                interactive=True)
-
-                                    # args for modify and tracking 
-                                    mid_frame_click_undo_but = gr.Button(
-                                                value="Undo",
-                                                interactive=True
-                                                )
-                                    mid_track_for_video = gr.Button(
-                                    value="Start tracking of new objects",
-                                        interactive=True,
-                                        )
                 with gr.Row():
                     with gr.Column(scale=1):
                         with gr.Accordion("roll back options", open=False):
@@ -956,101 +839,10 @@ def seg_track_app():
             ]
         )
 
-        #------------------ New Object Mid-frame-------------------
-        mid_new_obj_button.click(
-            fn=show_chosen_idx_to_add,
-            inputs=[
-                input_video, 
-                input_img_seq, 
-                Seg_Tracker, 
-                frame_num
-            ],
-            outputs=[
-                mid_frame
-            ],
-        )
-        
-        # Add new object
-        mid_new_object_button.click(
-            fn=add_new_object,
-            inputs=
-            [
-                Seg_Tracker
-            ],
-            outputs=
-            [
-                Seg_Tracker, click_stack
-            ]
-        )
-        
-        # tab_mid_frame_click.select(
-        #     fn=init_SegTracker,
-        #     inputs=[
-        #         aot_model,
-        #         long_term_mem,
-        #         max_len_long_term,
-        #         sam_gap,
-        #         max_obj_num,
-        #         points_per_side,
-        #         origin_frame
-        #     ],
-        #     outputs=[
-        #         Seg_Tracker, mid_frame, click_stack
-        #     ],
-        #     queue=False,
-        # )
-        mid_frame_click_undo_but.click(
-            fn = mid_frame_undo_click_stack_and_refine_seg,
-            inputs=[
-                Seg_Tracker, origin_frame, click_stack,
-                aot_model,
-                long_term_mem,
-                max_len_long_term,
-                sam_gap,
-                max_obj_num,
-                points_per_side,
-                input_video, input_img_seq, frame_num, refine_idx
-            ],
-            outputs=[
-               Seg_Tracker, mid_frame, click_stack
-            ]
-        )
-        
-        mid_frame.select(
-            fn=mid_sam_click,
-            inputs=[
-                Seg_Tracker, origin_frame, roll_back_point_mode, click_stack,
-                aot_model,
-                long_term_mem,
-                max_len_long_term,
-                sam_gap,
-                max_obj_num,
-                points_per_side,
-                input_video, input_img_seq, frame_num
-            ],
-            outputs=[
-                Seg_Tracker, mid_frame, click_stack
-            ]
-        )
-
-
-        # Track object in video
-        mid_track_for_video.click(
-            fn=tracking_objects,
-            inputs=[
-                Seg_Tracker,
-                input_video,
-                input_img_seq,
-                fps, frame_num
-            ],
-            outputs=[
-                output_video, output_mask
-            ]
-        )
 
         # ----------------- Refine Mask ---------------------------
 
-        output_res.select( #choose which mask to label to another part of image
+        output_res.select(
             fn = choose_obj_to_refine,
             inputs=[
                 input_video, input_img_seq, Seg_Tracker, frame_num
