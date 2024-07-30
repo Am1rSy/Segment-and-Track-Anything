@@ -324,8 +324,9 @@ def mid_sam_click(Seg_Tracker, origin_frame, point_mode, click_stack, aot_model,
     chosen_frame_show, curr_mask, ori_frame = res_by_num(input_video, input_img_seq, frame_num)
     print(np.unique(curr_mask))
     print(Seg_Tracker.curr_idx)
-    Seg_Tracker.update_origin_merged_mask(curr_mask)    
-    Seg_Tracker.curr_idx += 1
+    # prev_mask = Seg_Tracker.first_frame_mask
+    # Seg_Tracker.update_origin_merged_mask(prev_mask)    
+    # Seg_Tracker.curr_idx += 1
 
     print(f'Adding Object ID:{Seg_Tracker.curr_idx}')
 
@@ -432,11 +433,11 @@ def res_by_num(input_video, input_img_seq, frame_num):
         return None, None, None
 
     tracking_result_dir = f'{os.path.join(os.path.dirname(__file__), "tracking_results", f"{video_name}")}'
-    output_masked_frame_dir = f'{tracking_result_dir}/{video_name}_masked_frames'
-    output_masked_frame_path = sorted([os.path.join(output_masked_frame_dir, img_name) for img_name in os.listdir(output_masked_frame_dir)])
+    output_masked_frame_dir_png = f'{tracking_result_dir}/{video_name}_masked_frames/png'
+    output_masked_frame_path = sorted([os.path.join(output_masked_frame_dir_png, img_name) for img_name in os.listdir(output_masked_frame_dir_png)])
 
-    output_mask_dir = f'{tracking_result_dir}/{video_name}_masks'
-    output_mask_path = sorted([os.path.join(output_mask_dir, img_name) for img_name in os.listdir(output_mask_dir)])
+    output_mask_dir_png = f'{tracking_result_dir}/{video_name}_masks/png'
+    output_mask_path = sorted([os.path.join(output_mask_dir_png, img_name) for img_name in os.listdir(output_mask_dir_png)])
 
 
     if len(output_masked_frame_path) == 0:
@@ -471,8 +472,12 @@ def show_res_by_slider(input_video, input_img_seq, frame_per):
         return None, None
 
     tracking_result_dir = f'{os.path.join(os.path.dirname(__file__), "tracking_results", f"{video_name}")}'
-    output_masked_frame_dir = f'{tracking_result_dir}/{video_name}_masked_frames'
-    output_masked_frame_path = sorted([os.path.join(output_masked_frame_dir, img_name) for img_name in os.listdir(output_masked_frame_dir)])
+    # output_masked_frame_dir = f'{tracking_result_dir}/{video_name}_masked_frames'
+    # output_masked_frame_path = sorted([os.path.join(output_masked_frame_dir, img_name) for img_name in os.listdir(output_masked_frame_dir)])
+    
+    output_masked_frame_dir_png = f'{tracking_result_dir}/{video_name}_masked_frames/png'
+    output_masked_frame_path = sorted([os.path.join(output_masked_frame_dir_png, img_name) for img_name in os.listdir(output_masked_frame_dir_png)])
+    
     total_frames_num = len(output_masked_frame_path)
     if total_frames_num == 0:
         print("Not find output res")
@@ -499,9 +504,13 @@ def choose_obj_to_refine(input_video, input_img_seq, Seg_Tracker, frame_num, evt
 
 def show_chosen_idx_to_add(input_video, input_img_seq, Seg_Tracker, frame_num):
     chosen_frame_show, curr_mask, ori_frame = res_by_num(input_video, input_img_seq, frame_num)
-    return chosen_frame_show
+    Seg_Tracker = SegTracker_add_first_frame(Seg_Tracker, ori_frame, curr_mask)
+    return chosen_frame_show, Seg_Tracker
     
 def show_chosen_idx_to_refine(aot_model, long_term_mem, max_len_long_term, sam_gap, max_obj_num, points_per_side, input_video, input_img_seq, Seg_Tracker, frame_num, idx):
+    if idx is None:
+        raise gr.Error("Mask has not been chosen!")
+    
     chosen_frame_show, curr_mask, ori_frame = res_by_num(input_video, input_img_seq, frame_num)
     if Seg_Tracker is None:
         print("reset aot args, new SegTracker")
@@ -1009,7 +1018,7 @@ def seg_track_app():
                 frame_num
             ],
             outputs=[
-                mid_frame
+                mid_frame, Seg_Tracker
             ],
         )
         

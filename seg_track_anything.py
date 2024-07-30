@@ -8,6 +8,7 @@ import torch
 import gc
 import imageio
 from scipy.ndimage import binary_dilation
+from tempfile import TemporaryFile
 
 def save_prediction(pred_mask,output_dir,file_name):
     save_mask = Image.fromarray(pred_mask.astype(np.uint8))
@@ -90,6 +91,10 @@ def tracking_objects_in_video(SegTracker, input_video, input_img_seq, fps, frame
         'tracking_result_dir': tracking_result_dir,
         'output_mask_dir': f'{tracking_result_dir}/{video_name}_masks',
         'output_masked_frame_dir': f'{tracking_result_dir}/{video_name}_masked_frames',
+        'output_mask_dir_png': f'{tracking_result_dir}/{video_name}_masks/png',
+        'output_masked_frame_dir_png': f'{tracking_result_dir}/{video_name}_masked_frames/png',
+        'output_mask_dir_np': f'{tracking_result_dir}/{video_name}_masks/numpy',
+        'output_masked_frame_dir_np': f'{tracking_result_dir}/{video_name}_masked_frames/numpy',
         'output_video': f'{tracking_result_dir}/{video_name}_seg.mp4', # keep same format as input video
         'output_gif': f'{tracking_result_dir}/{video_name}_seg.gif',
     }
@@ -109,14 +114,15 @@ def video_type_input_tracking(SegTracker, input_video, io_args, video_name, fram
     cap = cv2.VideoCapture(input_video)
     fps = cap.get(cv2.CAP_PROP_FPS)
 
+    #modify masks and object mid-frame 
     if frame_num > 0:
-        output_mask_name = sorted([img_name for img_name in os.listdir(io_args['output_mask_dir'])])
-        output_masked_frame_name = sorted([img_name for img_name in os.listdir(io_args['output_masked_frame_dir'])])
+        output_mask_name = sorted([img_name for img_name in os.listdir(io_args['output_mask_dir_png'])])
+        output_masked_frame_name = sorted([img_name for img_name in os.listdir(io_args['output_masked_frame_dir_png'])])
 
         for i in range(0, frame_num):
             cap.read()
-            pred_list.append(np.array(Image.open(os.path.join(io_args['output_mask_dir'], output_mask_name[i])).convert('P')))
-            masked_pred_list.append(cv2.imread(os.path.join(io_args['output_masked_frame_dir'], output_masked_frame_name[i])))
+            pred_list.append(np.array(Image.open(os.path.join(io_args['output_mask_dir_png'], output_mask_name[i])).convert('P')))
+            masked_pred_list.append(cv2.imread(os.path.join(io_args['output_masked_frame_dir_png'], output_masked_frame_name[i])))
 
     
     # create dir to save predicted mask and masked frame
@@ -125,10 +131,21 @@ def video_type_input_tracking(SegTracker, input_video, io_args, video_name, fram
             os.system(f"rm -r {io_args['output_mask_dir']}")
         if os.path.isdir(io_args['output_masked_frame_dir']):
             os.system(f"rm -r {io_args['output_masked_frame_dir']}")
-    output_mask_dir = io_args['output_mask_dir']
+
+    # output_mask_dir = io_args['output_mask_dir']
+    output_mask_dir_png = io_args['output_mask_dir_png']
+    # output_mask_dir_np = io_args['output_mask_dir_np']
+    
     create_dir(io_args['output_mask_dir'])
     create_dir(io_args['output_masked_frame_dir'])
-
+    
+    create_dir(io_args['output_mask_dir_png'])
+    create_dir(io_args['output_masked_frame_dir_png'])
+    
+    
+    create_dir(io_args['output_mask_dir_np'])
+    create_dir(io_args['output_masked_frame_dir_np'])
+    
     torch.cuda.empty_cache()
     gc.collect()
     sam_gap = SegTracker.sam_gap
@@ -152,7 +169,7 @@ def video_type_input_tracking(SegTracker, input_video, io_args, video_name, fram
                 track_mask = SegTracker.track(frame)
                 # find new objects, and update tracker with new objects
                 new_obj_mask = SegTracker.find_new_objs(track_mask,seg_mask)
-                save_prediction(new_obj_mask, output_mask_dir, str(frame_idx+frame_num).zfill(5) + '_new.png')
+                save_prediction(new_obj_mask, output_mask_dir_png, str(frame_idx+frame_num).zfill(5) + '_new.png')
                 pred_mask = track_mask + new_obj_mask
                 # segtracker.restart_tracker()
                 SegTracker.add_reference(frame, pred_mask)
@@ -161,7 +178,7 @@ def video_type_input_tracking(SegTracker, input_video, io_args, video_name, fram
             torch.cuda.empty_cache()
             gc.collect()
             
-            save_prediction(pred_mask, output_mask_dir, str(frame_idx + frame_num).zfill(5) + '.png')
+            save_prediction(pred_mask, output_mask_dir_png, str(frame_idx + frame_num).zfill(5) + '.png')
             pred_list.append(pred_mask)
 
             print("processed frame {}, obj_num {}".format(frame_idx + frame_num, SegTracker.get_obj_num()),end='\r')
@@ -202,8 +219,11 @@ def video_type_input_tracking(SegTracker, input_video, io_args, video_name, fram
         frame = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
         pred_mask = pred_list[frame_idx]
         masked_frame = draw_mask(frame, pred_mask)
-        cv2.imwrite(f"{io_args['output_masked_frame_dir']}/{str(frame_idx).zfill(5)}.png", masked_frame[:, :, ::-1])
+        cv2.imwrite(f"{io_args['output_masked_frame_dir_png']}/frame_{str(frame_idx).zfill(5)}.png", masked_frame[:, :, ::-1])
 
+        np_file = np.array(pred_mask)
+        np.save(f"{io_args['output_mask_dir_np']}/frame_{str(frame_idx).zfill(5)}.npy", np_file)
+        
         masked_pred_list.append(masked_frame)
         masked_frame = cv2.cvtColor(masked_frame,cv2.COLOR_RGB2BGR)
         out.write(masked_frame)
@@ -214,9 +234,9 @@ def video_type_input_tracking(SegTracker, input_video, io_args, video_name, fram
     print("\n{} saved".format(io_args['output_video']))
     print('\nfinished')
 
-    # save colorized masks as a gif
-    imageio.mimsave(io_args['output_gif'], masked_pred_list, fps=fps)
-    print("{} saved".format(io_args['output_gif']))
+    # # save colorized masks as a gif
+    # imageio.mimsave(io_args['output_gif'], masked_pred_list, fps=fps)
+    # print("{} saved".format(io_args['output_gif']))
 
     # zip predicted mask
     os.system(f"zip -r {io_args['tracking_result_dir']}/{video_name}_pred_mask.zip {io_args['output_mask_dir']}")
