@@ -2,7 +2,7 @@
 sam_args = {
     # 'sam_checkpoint': "ckpt/sam_vit_b_01ec64.pth",
     'sam_checkpoint': "ckpt/vit_h_lm.pth",
-    'model_type': "vit_b",
+    'model_type': "vit_h",
     'generator_args':{
         'points_per_side': 16,
         'pred_iou_thresh': 0.8,
