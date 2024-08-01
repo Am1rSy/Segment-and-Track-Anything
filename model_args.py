@@ -1,6 +1,7 @@
 # Explanation of generator_args is in sam/segment_anything/automatic_mask_generator.py: SamAutomaticMaskGenerator
 sam_args = {
-    'sam_checkpoint': "ckpt/sam_vit_b_01ec64.pth",
+    # 'sam_checkpoint': "ckpt/sam_vit_b_01ec64.pth",
+    'sam_checkpoint': "ckpt/vit_h_lm.pth",
     'model_type': "vit_b",
     'generator_args':{
         'points_per_side': 16,
