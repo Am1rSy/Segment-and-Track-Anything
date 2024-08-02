@@ -10,10 +10,10 @@ pip install numpy opencv-python pycocotools matplotlib Pillow==9.2.0 scikit-imag
 pip install gradio==4.39.0 zip gdown ffmpeg==1.4
 
 # # Install Pytorch Correlation
-# git clone https://github.com/ClementPinard/Pytorch-Correlation-extension.git
-# cd Pytorch-Correlation-extension
-# python setup.py install
-# cd -
+git clone https://github.com/ClementPinard/Pytorch-Correlation-extension.git
+cd Pytorch-Correlation-extension
+python setup.py install
+cd -
 
 # Install AST
 git clone https://github.com/YuanGongND/ast.git ast_master
